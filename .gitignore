@@ -1,24 +1,19 @@
-# Local archives and notes
 backup/
-Backups/
-[Aa][Gg][Ee][Nn][Tt].md
-[Ii][Dd][Ee][Aa].md
-[Dd][Ee][Vv][Ee][Ll][Oo][Pp][Mm][Ee][Nn][Tt].md
+docs/
 
-# Downloaded model resources
 models/
-*.gguf
-*.safetensors
-
-# Local environments and generated files
 .venv/
 __pycache__/
-*.py[cod]
-.DS_Store
+xcuserdata/
 DerivedData/
 build/
+
+AGENT.md
+*.gguf
+*.safetensors
+*.py[cod]
+.DS_Store
 *.xcresult
-xcuserdata/
 *.xcuserstate
 .env
 .env.*
