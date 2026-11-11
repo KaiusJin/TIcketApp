@@ -7,8 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-        BB0000000000000000000001 /* LlamaSwift in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000002 /* LlamaSwift */; };
-        BB0000000000000000000003 /* NuExtract GGUF in Resources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000004 /* NuExtract GGUF */; };
+		BB0000000000000000000001 /* LlamaSwift in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000002 /* LlamaSwift */; };
+		BB0000000000000000000003 /* models/NuExtract/NuExtract-1.5-smol-Q4_K_M.gguf in Resources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000004 /* models/NuExtract/NuExtract-1.5-smol-Q4_K_M.gguf */; };
+		BB0000000000000000000005 /* models/Qwen3-0.6B-GGUF/Qwen_Qwen3-0.6B-Q4_K_M.gguf in Resources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000006 /* models/Qwen3-0.6B-GGUF/Qwen_Qwen3-0.6B-Q4_K_M.gguf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -29,10 +30,11 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-        BB0000000000000000000004 /* NuExtract GGUF */ = {isa = PBXFileReference; lastKnownFileType = file; path = "models/NuExtract/NuExtract-1.5-smol-Q4_K_M.gguf"; sourceTree = "<group>"; };
 		01B6659A30A393840067E829 /* TicketApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TicketApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		01B665A730A393850067E829 /* TicketAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TicketAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		01B665B130A393850067E829 /* TicketAppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TicketAppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		BB0000000000000000000004 /* models/NuExtract/NuExtract-1.5-smol-Q4_K_M.gguf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "models/NuExtract/NuExtract-1.5-smol-Q4_K_M.gguf"; sourceTree = "<group>"; };
+		BB0000000000000000000006 /* models/Qwen3-0.6B-GGUF/Qwen_Qwen3-0.6B-Q4_K_M.gguf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "models/Qwen3-0.6B-GGUF/Qwen_Qwen3-0.6B-Q4_K_M.gguf"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -58,7 +60,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-                BB0000000000000000000001 /* LlamaSwift in Frameworks */,
+				BB0000000000000000000001 /* LlamaSwift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -89,7 +91,8 @@
 		01B6659130A393840067E829 = {
 			isa = PBXGroup;
 			children = (
-                BB0000000000000000000004 /* NuExtract GGUF */,
+				BB0000000000000000000004 /* models/NuExtract/NuExtract-1.5-smol-Q4_K_M.gguf */,
+				BB0000000000000000000006 /* models/Qwen3-0.6B-GGUF/Qwen_Qwen3-0.6B-Q4_K_M.gguf */,
 				01B6659C30A393840067E829 /* TicketApp */,
 				01B665AA30A393850067E829 /* TicketAppTests */,
 				01B665B430A393850067E829 /* TicketAppUITests */,
@@ -128,7 +131,7 @@
 			);
 			name = TicketApp;
 			packageProductDependencies = (
-                BB0000000000000000000002 /* LlamaSwift */,
+				BB0000000000000000000002 /* LlamaSwift */,
 			);
 			productName = TicketApp;
 			productReference = 01B6659A30A393840067E829 /* TicketApp.app */;
@@ -232,7 +235,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-                BB0000000000000000000003 /* NuExtract GGUF in Resources */,
+				BB0000000000000000000003 /* models/NuExtract/NuExtract-1.5-smol-Q4_K_M.gguf in Resources */,
+				BB0000000000000000000005 /* models/Qwen3-0.6B-GGUF/Qwen_Qwen3-0.6B-Q4_K_M.gguf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -606,11 +610,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-        BB0000000000000000000002 /* LlamaSwift */ = {
-            isa = XCSwiftPackageProductDependency;
-            package = 017289BE30A4C2BA008C6486 /* XCRemoteSwiftPackageReference "llama" */;
-            productName = LlamaSwift;
-        };
+		BB0000000000000000000002 /* LlamaSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 017289BE30A4C2BA008C6486 /* XCRemoteSwiftPackageReference "llama" */;
+			productName = LlamaSwift;
+		};
 /* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 01B6659230A393840067E829 /* Project object */;

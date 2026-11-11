@@ -2,12 +2,12 @@ import Foundation
 
 /// Public receipt shape and strict local validation. NuExtract has a separate extraction template.
 nonisolated indirect enum ReceiptField: Sendable {
-    case text, decimal, totals, choice([String]), object([String: ReceiptField]), array(ReceiptField)
+    case text, date, decimal, totals, object([String: ReceiptField]), array(ReceiptField)
 
     var template: Any {
         switch self {
-        case .text, .decimal, .choice: return NSNull()
-        case .totals: return ["subtotal": NSNull(), "total": NSNull()]
+        case .text, .date, .decimal: return NSNull()
+        case .totals: return [:] as [String: Any]
         case .object(let fields): return fields.mapValues(\.template)
         case .array(let item): return [item.template]
         }
@@ -21,21 +21,21 @@ nonisolated indirect enum ReceiptField: Sendable {
                     "required": fields.keys.sorted(), "additionalProperties": false]
         case .array(let item): return ["type": "array", "items": item.jsonSchema]
         case .totals:
-            return ["type": "object", "properties": [:] as [String: Any],
-                    "patternProperties": [ReceiptSchema.totalKeyPattern: ReceiptField.decimal.jsonSchema],
-                    "additionalProperties": false]
+            return ["type": "object",
+                    "propertyNames": ["type": "string", "pattern": #"\S"#],
+                    "additionalProperties": ReceiptField.decimal.jsonSchema]
         case .text: return ["type": ["string", "null"]]
         case .decimal:
             return ["anyOf": [["type": "string", "pattern": #"^-?[0-9]+(\.[0-9]+)?$"#], ["type": "null"]]]
-        case .choice(let values):
-            return ["anyOf": [["type": "string", "enum": values], ["type": "null"]]]
+        case .date:
+            return ["anyOf": [["type": "string", "pattern": #"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"#], ["type": "null"]]]
         }
     }
 
     private func orderedKeys(_ fields: [String: ReceiptField]) -> [String] {
-        let order = ["receipt_type", "merchant",
+        let order = ["date", "merchant",
                      "items", "name", "total_price",
-                     "totals", "subtotal", "total"]
+                     "totals", "SUBTOTAL", "TOTAL"]
         return fields.keys.sorted {
             let left = order.firstIndex(of: $0) ?? order.count
             let right = order.firstIndex(of: $1) ?? order.count
@@ -66,7 +66,7 @@ nonisolated indirect enum ReceiptField: Sendable {
                 let encoded = String(decoding: try JSONEncoder().encode(key), as: UTF8.self)
                 return encoded + ":" + (try fields[key]!.promptShape())
             }).joined(separator: ",") + "}"
-        case .totals: return #"{"subtotal":null,"total":null}"#
+        case .totals: return "{}"
         case .array(let item): return "[" + (try item.promptShape()) + "]"
         default: return "null"
         }
@@ -84,8 +84,8 @@ nonisolated indirect enum ReceiptField: Sendable {
         case .totals:
             guard let totals = value as? [String: Any] else { issues.append("\(path): expected object"); return }
             for (key, amount) in totals {
-                if key.range(of: ReceiptSchema.totalKeyPattern, options: .regularExpression) == nil {
-                    issues.append("\(path).\(key): unexpected field")
+                if key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    issues.append("\(path): empty monetary label")
                 } else { ReceiptField.decimal.validate(amount, path: "\(path).\(key)", issues: &issues) }
             }
         case .array(let item):
@@ -99,8 +99,8 @@ nonisolated indirect enum ReceiptField: Sendable {
                 if string.range(of: #"^-?[0-9]+(\.[0-9]+)?$"#, options: .regularExpression) == nil || Decimal(string: string, locale: Locale(identifier: "en_US_POSIX")) == nil {
                     issues.append("\(path): invalid decimal string")
                 }
-            case .choice(let choices):
-                if !choices.contains(string) { issues.append("\(path): unsupported value") }
+            case .date:
+                if !ReceiptDate.isValidDate(string) { issues.append("\(path): expected a valid YYYY-MM-DD date") }
             default: break
             }
         }
@@ -113,20 +113,8 @@ nonisolated enum ReceiptSchema {
     static func constraintJSON() throws -> String {
         try root.constraintJSON()
     }
-    // One allowlist drives constrained labels, output keys and public validation.
-    // Only other entries are numbered by the adapter, never by the model.
-    static let chargeLabels = [
-        "HST", "GST", "PST", "QST", "VAT", "tax", "tip",
-        "service_fee", "processing_fee", "handling_fee", "delivery_fee",
-        "convenience_fee", "surcharge", "discount", "rounding", "other"
-    ]
-    static let totalKeyPattern: String = {
-        let labels = chargeLabels.filter { $0 != "other" }
-            .map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "|")
-        return "^(?:subtotal|total|" + labels + "|other(?:_(?:[2-9]|[1-9][0-9]+))?)$"
-    }()
     static let root: ReceiptField = .object([
-        "receipt_type": .choice(["restaurant", "grocery", "other"]),
+        "date": .date,
         "merchant": .text,
         "items": .array(.object([
             "name": .text, "total_price": .decimal
@@ -136,7 +124,7 @@ nonisolated enum ReceiptSchema {
 
     static func schema(for part: ReceiptExtractionPart) -> ReceiptField {
         guard case .object(let fields) = root else { preconditionFailure() }
-        let keys = part == .amounts ? ["totals"] : ["receipt_type", "merchant", "items"]
+        let keys = part == .amounts ? ["totals"] : ["date", "merchant", "items"]
         return .object(fields.filter { keys.contains($0.key) })
     }
 
@@ -167,7 +155,7 @@ nonisolated enum ReceiptSchema {
         try extractionPrompt(vision: vision, part: .details)
     }
 
-    static func retryPrompt(vision: OCRScan, part: ReceiptExtractionPart, previousJSON: String, report: String) throws -> String {
-        try NuExtractSchema.prompt(vision: vision, part: part, report: report)
+    static func amountRetryPrompt(text: String, report: String) throws -> String {
+        try NuExtractSchema.amountPrompt(text: text, recheck: true)
     }
 }

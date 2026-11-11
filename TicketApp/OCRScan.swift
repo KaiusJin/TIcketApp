@@ -44,11 +44,54 @@ nonisolated struct OCRScan: Codable, Sendable {
     }
 
     var text: String { rows.map(\.text).joined(separator: "\n") }
+    /// Last total/subtotal label in reconstructed reading order, plus at most
+    /// 50 Swift Characters on each side. Keep the label and original whitespace.
+    struct AmountWindow: Sendable {
+        struct Slice: Sendable {
+            let rowIndex: Int
+            let text: String
+            let isComplete: Bool
+        }
+        let text: String
+        let slices: [Slice]
+    }
+
+    var amountText: String? { amountWindow?.text }
+
+    var amountWindow: AmountWindow? {
+        let source = text
+        let labels = try! NSRegularExpression(pattern: #"(?<![A-Za-z])(?:subtotal|total)(?![A-Za-z])"#,
+                                             options: .caseInsensitive)
+        guard let match = labels.matches(in: source, range: NSRange(source.startIndex..., in: source)).last,
+              let anchor = Range(match.range, in: source) else { return nil }
+        let start = source.index(anchor.lowerBound, offsetBy: -50, limitedBy: source.startIndex) ?? source.startIndex
+        let end = source.index(anchor.upperBound, offsetBy: 50, limitedBy: source.endIndex) ?? source.endIndex
+        let windowRange = NSRange(start..<end, in: source)
+        var offset = 0
+        var slices: [AmountWindow.Slice] = []
+        for (index, row) in rows.enumerated() {
+            let rowRange = NSRange(location: offset, length: row.text.utf16.count)
+            let overlap = NSIntersectionRange(windowRange, rowRange)
+            if overlap.length > 0 {
+                let local = NSRange(location: overlap.location - offset, length: overlap.length)
+                slices.append(.init(rowIndex: index, text: (row.text as NSString).substring(with: local),
+                                    isComplete: overlap == rowRange))
+            }
+            offset += rowRange.length + 1
+        }
+        return .init(text: String(source[start..<end]), slices: slices)
+    }
+    var priceLayout: OCRPriceLayout { OCRPriceLayout.analyze(rows: rows, observations: observations) }
+    var itemText: String { priceLayout.text(rows: rows, observations: observations) }
 
     func evidenceJSON() throws -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return String(decoding: try encoder.encode(self), as: UTF8.self)
+        // Include derived assignments for inspection without changing the stored
+        // scan schema or losing compatibility with older evidence exports.
+        var object = try JSONSerialization.jsonObject(with: encoder.encode(self)) as! [String: Any]
+        object["priceLayout"] = try JSONSerialization.jsonObject(with: encoder.encode(priceLayout))
+        return String(decoding: try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]), as: UTF8.self)
     }
 }
 

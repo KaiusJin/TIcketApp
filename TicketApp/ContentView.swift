@@ -50,42 +50,8 @@ struct ContentView: View {
                     Text(Strings.timing).font(.caption).foregroundStyle(.secondary)
                 }
                 Section(Strings.result) {
-                    if let parsed = model.finalParse {
-                        Label(parsed.passed ? Strings.passed : Strings.manualReview,
-                              systemImage: parsed.passed ? "checkmark.circle" : "exclamationmark.triangle")
-                            .foregroundStyle(parsed.passed ? .green : .orange)
-                        Text(Strings.arithmeticNotice).font(.caption).foregroundStyle(.secondary)
-                        if !parsed.issues.isEmpty {
-                            DisclosureGroup(Strings.checks) {
-                                ForEach(Array(parsed.issues.enumerated()), id: \.offset) { _, issue in
-                                    Text(issue).foregroundStyle(.orange)
-                                }
-                            }
-                        }
-                    }
                     Text(model.result.isEmpty ? Strings.placeholder : model.result)
                         .font(.system(.caption, design: .monospaced)).textSelection(.enabled)
-                    ForEach(model.notices, id: \.self) { Text($0).foregroundStyle(.orange) }
-                }
-                if model.needsManualReview {
-                    Section(Strings.manualDraft) {
-                        Text(Strings.manualInstructions).font(.caption).foregroundStyle(.secondary)
-                        TextEditor(text: $model.manualDraft)
-                            .font(.system(.caption, design: .monospaced))
-                            .frame(minHeight: 240)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .accessibilityLabel(Strings.manualDraft)
-                        Button(Strings.checkCorrections) { model.validateManualDraft() }
-                        if let validation = model.manualValidation {
-                            Label(validation.passed ? Strings.correctionPassed : Strings.manualReview,
-                                  systemImage: validation.passed ? "checkmark.circle" : "exclamationmark.triangle")
-                                .foregroundStyle(validation.passed ? .green : .orange)
-                            ForEach(Array(validation.issues.enumerated()), id: \.offset) { _, issue in
-                                Text(issue).foregroundStyle(.orange)
-                            }
-                        }
-                    }
                 }
                 if model.firstParse != nil || !model.visionText.isEmpty {
                     Section(Strings.evidence) {
@@ -93,6 +59,12 @@ struct ContentView: View {
                         DisclosureGroup(Strings.visionCoordinates) {
                             Text(Strings.coordinateDescription).font(.caption).foregroundStyle(.secondary)
                             evidenceText(model.visionCoordinates)
+                        }
+                        if !model.settlementText.isEmpty {
+                            DisclosureGroup(Strings.settlementEvidence) { evidenceText(model.settlementText) }
+                        }
+                        if !model.settlementLayoutJSON.isEmpty {
+                            DisclosureGroup(Strings.settlementLayoutEvidence) { evidenceText(model.settlementLayoutJSON) }
                         }
                         if !model.amountJSON.isEmpty {
                             DisclosureGroup(Strings.amountEvidence) { evidenceText(model.amountJSON) }
@@ -103,9 +75,6 @@ struct ContentView: View {
                         if let first = model.firstParse {
                             DisclosureGroup(Strings.initialJSON) {
                                 evidenceText(first.output.text)
-                                ForEach(Array(first.issues.enumerated()), id: \.offset) { _, issue in
-                                    Text(issue).foregroundStyle(.orange)
-                                }
                             }
                         }
                         if let final = model.finalParse {

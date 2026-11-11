@@ -37,8 +37,17 @@ nonisolated enum OCRReconciliation {
                                           bottomLeft: point(quad.bottomLeft), bottomRight: point(quad.bottomRight))
         let points = [mapped.topLeft, mapped.topRight, mapped.bottomLeft, mapped.bottomRight]
         let x = points.map(\.x).min()!, y = points.map(\.y).min()!
+        let regions = line.amountRegions?.map { region in
+            let corners = [point(.init(x: region.x, y: region.y)),
+                           point(.init(x: region.x + region.width, y: region.y)),
+                           point(.init(x: region.x, y: region.y + region.height)),
+                           point(.init(x: region.x + region.width, y: region.y + region.height))]
+            let minX = corners.map(\.x).min()!, minY = corners.map(\.y).min()!
+            return OCRLine.TextRegion(location: region.location, length: region.length, x: minX, y: minY,
+                                      width: corners.map(\.x).max()! - minX, height: corners.map(\.y).max()! - minY)
+        }
         return OCRLine(candidates: line.candidates, x: x, y: y,
                        width: points.map(\.x).max()! - x, height: points.map(\.y).max()! - y,
-                       quadrilateral: mapped, source: .initialMapped)
+                       quadrilateral: mapped, source: .initialMapped, amountRegions: regions)
     }
 }

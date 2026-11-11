@@ -5,49 +5,70 @@ import LlamaSwift
 /// matcher; KV state and accepted tokens never leak into another receipt or retry.
 actor ReceiptModel {
     private var weights: NuExtractWeights?
+    private var loadedKind: ReceiptModelKind?
     private var generating = false
     private let modelURL: URL?
+    private let amountModelURL: URL?
 
-    init(modelURL: URL? = nil) { self.modelURL = modelURL }
+    init(modelURL: URL? = nil, amountModelURL: URL? = nil) {
+        self.modelURL = modelURL
+        self.amountModelURL = amountModelURL
+    }
 
     func load(_ kind: ReceiptModelKind) async throws {
         guard !generating else { throw ReceiptError.modelBusy }
         try Task.checkCancellation()
-        if weights != nil { return }
-        let url = modelURL ?? Bundle.main.url(forResource: kind.rawValue, withExtension: "gguf")
+        if weights != nil, loadedKind == kind { return }
+        let override = kind == .amounts ? amountModelURL : modelURL
+        let url = override ?? Bundle.main.url(forResource: kind.rawValue, withExtension: "gguf")
         guard let url, FileManager.default.fileExists(atPath: url.path) else { throw ReceiptError.missingTextModel }
+        // Release the preceding stage's model before loading the next on phones.
+        weights = nil
+        loadedKind = nil
         InferenceDiagnostics.current?.phase("model_load")
         let loaded = try NuExtractWeights(url: url)
         try Task.checkCancellation()
         weights = loaded
+        loadedKind = kind
         InferenceDiagnostics.current?.event("model_loaded=\(kind.rawValue) backend=llama.cpp execution=on_device")
     }
 
     func unload() {
         guard !generating else { return }
         weights = nil
+        loadedKind = nil
     }
 
     func parse(vision: OCRScan, part: ReceiptExtractionPart, update: @escaping @MainActor @Sendable (String?, String) -> Void) async throws -> ModelOutput {
         try await generate(prompt: NuExtractSchema.prompt(vision: vision, part: part), part: part, update: update)
     }
 
-    func retryExtraction(vision: OCRScan, part: ReceiptExtractionPart, previousJSON: String, report: String,
-                         update: @escaping @MainActor @Sendable (String?, String) -> Void) async throws -> ModelOutput {
-        try await generate(prompt: NuExtractSchema.prompt(vision: vision, part: part, report: report), part: part, update: update)
+    func prepareAmounts(vision: OCRScan, update: @escaping @MainActor @Sendable (String?, String) -> Void) async throws -> ModelOutput {
+        try await generate(prompt: QwenAmountPrompt.prompt(vision: vision), part: nil, update: update)
     }
 
-    private func generate(prompt: String, part: ReceiptExtractionPart,
+    func parseAmounts(text: String, update: @escaping @MainActor @Sendable (String?, String) -> Void) async throws -> ModelOutput {
+        try await generate(prompt: NuExtractSchema.amountPrompt(text: text), part: .amounts, update: update)
+    }
+
+    func retryAmounts(text: String, report: String,
+                         update: @escaping @MainActor @Sendable (String?, String) -> Void) async throws -> ModelOutput {
+        try await generate(prompt: ReceiptSchema.amountRetryPrompt(text: text, report: report), part: .amounts, update: update)
+    }
+
+    /// A nil extraction part selects Qwen's plain-text checkout stage.
+    private func generate(prompt: String, part: ReceiptExtractionPart?,
                           update: @escaping @MainActor @Sendable (String?, String) -> Void) async throws -> ModelOutput {
         guard !generating else { throw ReceiptError.modelBusy }
-        guard let weights else { throw ReceiptError.missingTextModel }
+        let kind: ReceiptModelKind = part == nil ? .amounts : .text
+        guard let weights, loadedKind == kind else { throw ReceiptError.missingTextModel }
         try Task.checkCancellation()
         generating = true
         defer { generating = false }
         let signal = NuExtractCancellation()
         return try await withTaskCancellationHandler {
             let trace = InferenceDiagnostics.current
-            trace?.beginGeneration(model: ReceiptModelKind.text.rawValue)
+            trace?.beginGeneration(model: kind.rawValue)
             trace?.phase("input_prepare")
             await update(nil, Strings.preparing)
             let vocab = llama_model_get_vocab(weights.pointer)!
@@ -55,7 +76,7 @@ actor ReceiptModel {
             // Limit KV memory on phones. Reserve output space explicitly, with no
             // prompt truncation or sliding-window loss of earlier receipt rows.
             let contextLimit = min(8192, Int(llama_model_n_ctx_train(weights.pointer)))
-            let outputLimit = min(4096, contextLimit / 2)
+            let outputLimit = min(part == nil ? 512 : 4096, contextLimit / 2)
             guard tokens.count <= contextLimit - outputLimit else { throw ReceiptError.inputTooLong }
             // Preserve the same input/output budgets without reserving an unused
             // 8192-position KV cache for every short receipt on an iPhone.
@@ -80,13 +101,15 @@ actor ReceiptModel {
             trace?.event("context_create_end \(InferenceTrace.memory())")
             guard let sampler = llama_sampler_chain_init(llama_sampler_chain_default_params()) else { throw ReceiptError.guidedGenerationFailed }
             defer { llama_sampler_free(sampler) }
-            guard let grammar = llama_sampler_init_grammar(vocab, try NuExtractSchema.grammar(for: part), "root") else { throw ReceiptError.guidedGenerationFailed }
-            llama_sampler_chain_add(sampler, grammar)
+            if let part {
+                guard let grammar = llama_sampler_init_grammar(vocab, try NuExtractSchema.grammar(for: part), "root") else { throw ReceiptError.guidedGenerationFailed }
+                llama_sampler_chain_add(sampler, grammar)
+            }
             guard let greedy = llama_sampler_init_greedy() else { throw ReceiptError.guidedGenerationFailed }
             llama_sampler_chain_add(sampler, greedy)
             var batch = llama_batch_init(128, 0, 1)
             defer { llama_batch_free(batch) }
-            trace?.event("prompt_tokens=\(tokens.count) context=\(contextSize) output_limit=\(outputLimit) grammar=gbnf sampling=greedy")
+            trace?.event("prompt_tokens=\(tokens.count) context=\(contextSize) output_limit=\(outputLimit) grammar=\(part == nil ? "none" : "gbnf") sampling=greedy")
             trace?.phase("prefill")
             for start in stride(from: 0, to: tokens.count, by: 128) {
                 try Task.checkCancellation()
@@ -119,11 +142,15 @@ actor ReceiptModel {
                 if let text = String(bytes: bytes, encoding: .utf8) {
                     bytes.removeAll(keepingCapacity: true)
                     result += text
-                    boundary.append(text)
-                    monitor.append(text)
-                    trace?.decodedText(text, boundary: boundary)
-                    if boundary.complete { stopped = true; break }
-                    if monitor.shouldStop { repetition = true; break }
+                    if part != nil {
+                        boundary.append(text)
+                        monitor.append(text)
+                        trace?.decodedText(text, boundary: boundary)
+                        if boundary.complete { stopped = true; break }
+                        if monitor.shouldStop { repetition = true; break }
+                    } else {
+                        trace?.decodedText(text)
+                    }
                 }
                 if count == 1 || lastUpdate.duration(to: .now) >= .milliseconds(250) {
                     await update(result, Strings.generating(count))
@@ -139,6 +166,8 @@ actor ReceiptModel {
             guard bytes.isEmpty else { throw ReceiptError.guidedGenerationFailed }
             let raw = ModelOutput(text: result, reachedLimit: !stopped && count >= outputLimit, repetitionDetected: repetition)
             trace?.event("generation_end tokens=\(count) complete=\(boundary.complete) limit=\(raw.reachedLimit) repetition=\(repetition)")
+            // The pipeline maps Qwen's checkout selection back to original OCR blocks.
+            guard let part else { return raw }
             // On failure the UI retains the raw preview; only a complete, valid
             // extraction is adapted and allowed to enter the amount checks.
             trace?.phase("output_validation")
@@ -186,8 +215,8 @@ nonisolated private final class NuExtractCancellation: @unchecked Sendable {
 
 nonisolated enum NuExtractTokens {
     static func tokenize(_ text: String, vocab: OpaquePointer) throws -> [llama_token] {
-        // Tokenize the literal NuExtract markers using the model vocabulary and
-        // model-defined BOS convention. No chat template is applied.
+        // Prompts already contain model-specific markers (NuExtract extraction
+        // format or Qwen ChatML). Respect each GGUF vocabulary's BOS convention.
         var tokens = [llama_token](repeating: 0, count: text.utf8.count + 8)
         var count = llama_tokenize(vocab, text, Int32(text.utf8.count), &tokens, Int32(tokens.count), true, true)
         if count < 0 {

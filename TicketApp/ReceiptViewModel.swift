@@ -12,30 +12,24 @@ final class ReceiptViewModel {
     var recognitionStarted: ContinuousClock.Instant?
     var activeStageStarted: ContinuousClock.Instant?
     var error: String?
-    var notices: [String] = []
     var diagnostics = ""
     var stage: ReceiptStage?
     var timings: [ReceiptStageTiming] = []
     var amountJSON = ""
+    var settlementText = ""
+    var settlementLayoutJSON = ""
     var detailJSON = ""
     var visionText = ""
     var visionScan: OCRScan?
     var visionCoordinates = ""
     var firstParse: ReceiptParseResult?
     var finalParse: ReceiptParseResult?
-    var manualDraft = "" {
-        didSet { manualValidation = nil }
-    }
-    var manualValidation: ReceiptValidation?
     private let model = ReceiptModel()
     private let ocr = ReceiptOCR()
     private var task: Task<Void, Never>?
     private var trace: InferenceTrace?
 
     var canRun: Bool { !isBusy && imageData != nil }
-    var needsManualReview: Bool {
-        !isBusy && (finalParse.map { !$0.passed } ?? (error != nil && visionScan != nil))
-    }
 
     func timeText(for stage: ReceiptStage) -> String {
         if let timing = timings.first(where: { $0.stage == stage }) {
@@ -57,11 +51,6 @@ final class ReceiptViewModel {
         return Double(duration.seconds) + Double(duration.attoseconds) / 1e18
     }
 
-    func validateManualDraft() {
-        guard needsManualReview else { return }
-        manualValidation = ReceiptValidation.check(manualDraft)
-    }
-
     private func resetResult() {
         result = ""
         elapsed = nil
@@ -69,15 +58,14 @@ final class ReceiptViewModel {
         timings = []
         activeStageStarted = nil
         amountJSON = ""
+        settlementText = ""
+        settlementLayoutJSON = ""
         detailJSON = ""
         visionText = ""
         visionScan = nil
         visionCoordinates = ""
         firstParse = nil
         finalParse = nil
-        manualDraft = ""
-        manualValidation = nil
-        notices = []
     }
 
     func select(_ item: PhotosPickerItem) {
@@ -102,7 +90,7 @@ final class ReceiptViewModel {
         guard canRun, let imageData else { return }
         resetResult()
         start(status: Strings.running) {
-            InferenceDiagnostics.current?.event("configuration=vision_text_amount_retry max_parse_rounds=4 unknown_amounts=review money_format=string text_model=\(ReceiptModelKind.text.rawValue)")
+            InferenceDiagnostics.current?.event("configuration=qwen_selection_ocr_totals max_parse_rounds=2 unknown_amounts=preserve_null money_format=string date_model=nuextract date_input=full_ocr amount_window=last_total_before50_after50 settlement_model=\(ReceiptModelKind.amounts.rawValue) item_model=\(ReceiptModelKind.text.rawValue)")
             let start = ContinuousClock.now
             self.recognitionStarted = start
             defer {
@@ -112,26 +100,29 @@ final class ReceiptViewModel {
                 self.activeStageStarted = nil
                 InferenceDiagnostics.current?.event("pipeline_end elapsed_seconds=\(self.elapsed ?? 0)")
             }
-            let final = try await ReceiptPipeline.run(
+            _ = try await ReceiptPipeline.run(
                 vision: { try await self.ocr.recognize(imageData) },
                 load: { try await self.model.load($0) },
+                prepareAmounts: { vision in
+                    try await self.model.prepareAmounts(vision: vision) { [weak self] text, detail in
+                        self?.receive(text: text, detail: detail)
+                    }
+                },
                 parse: { vision, part in
                     try await self.model.parse(vision: vision, part: part) { [weak self] text, detail in
                         self?.receive(text: text, detail: detail)
                     }
                 },
-                retry: { scan, part, previousJSON, report in
-                    try await self.model.retryExtraction(vision: scan, part: part, previousJSON: previousJSON, report: report) { [weak self] text, detail in
-                        self?.receive(text: text, detail: detail)
-                    }
-                },
                 emit: { self.handle($0) })
-            self.status = final.passed ? Strings.passed : Strings.manualReview
+            self.status = Strings.completed
         }
     }
 
     private func receive(text: String?, detail: String) {
-        if let text { result = text }
+        if let text {
+            result = text
+            if stage == .settlementText { settlementText = text }
+        }
         if status != Strings.cancelling {
             status = "\(stage.map(Strings.title) ?? Strings.running) · \(detail)"
         }
@@ -153,28 +144,23 @@ final class ReceiptViewModel {
             visionScan = scan
             visionText = scan.text
             visionCoordinates = (try? scan.evidenceJSON()) ?? ""
-            if scan.rows.isEmpty { notices.append(Strings.emptyVision) }
-            if let geometry = scan.geometry {
-                switch geometry.status {
-                case .insufficientEvidence: notices.append(Strings.uncertainDirection)
-                case .recognitionFallback: notices.append(Strings.deskewFallback)
-                case .corrected, .alreadyAligned: break
-                }
-            }
+        case .settlement(let output):
+            settlementText = output.text
+        case .settlementLayout(let layout):
+            settlementLayoutJSON = (try? layout.evidenceJSON()) ?? ""
+            InferenceDiagnostics.current?.event("settlement_layout mapped_rows=\(layout.selectedRowIndices.count) columns=\(layout.columns.count) blocks=\(layout.blocks.count) unresolved=\(layout.unresolved.count)")
         case .partial(let part, let output):
             if part == .amounts {
-                amountJSON += (amountJSON.isEmpty ? "" : Strings.retrySeparator) + (output.rawText ?? output.text)
+                amountJSON = output.rawText ?? output.text
             } else {
-                detailJSON += (detailJSON.isEmpty ? "" : Strings.retrySeparator) + (output.rawText ?? output.text)
+                detailJSON = output.rawText ?? output.text
             }
         case .initial(let parsed):
             firstParse = parsed
-            manualDraft = parsed.validation.formattedJSON ?? parsed.output.text
             InferenceDiagnostics.current?.event("first_validation passed=\(parsed.passed) issues=\(parsed.issues.count)")
         case .final(let parsed):
             finalParse = parsed
             result = parsed.validation.formattedJSON ?? parsed.output.text
-            manualDraft = result
             InferenceDiagnostics.current?.event("final_validation passed=\(parsed.passed) issues=\(parsed.issues.count)")
         }
     }
@@ -224,8 +210,6 @@ final class ReceiptViewModel {
                     trace.finish("error")
                     self.error = error.localizedDescription
                     self.status = Strings.failed
-                    if self.visionScan != nil { self.notices.append(Strings.manualReview) }
-                    if self.manualDraft.isEmpty { self.manualDraft = self.result }
                 }
             }
         }
@@ -234,8 +218,8 @@ final class ReceiptViewModel {
 
 enum Strings {
     static let title = "Receipt Reader"
-    static let workflow = "Vision → Totals → Items → Merge"
-    static let workflowDetail = "On-device NuExtract extracts totals and items. Each step can retry once before merging."
+    static let workflow = "Vision → Checkout text → Totals → Receipt details → Merge"
+    static let workflowDetail = "Qwen selects checkout text. Receipt layout pairs totals; NuExtract reads the date, merchant and items. All processing stays on-device."
     static let ready = "Ready"
     static let readingImage = "Reading selected image…"
     static let running = "Recognizing receipt…"
@@ -243,12 +227,7 @@ enum Strings {
     static func prefilling(_ count: Int, total: Int) -> String { "Reading evidence · \(count)/\(total) tokens" }
     static func generating(_ count: Int) -> String { "Extracting · \(count) tokens" }
     static let finished = "Stage finished"
-    static let passed = "Amount checks passed"
-    static let manualReview = "Manual review required"
-    static let manualDraft = "Manual corrections"
-    static let manualInstructions = "Compare with the receipt, edit this JSON and check it again. Original model outputs remain below. Corrections are kept on this page only."
-    static let checkCorrections = "Check corrections"
-    static let correctionPassed = "Corrected JSON passes amount checks"
+    static let completed = "Recognition finished"
     static let select = "Select Image"
     static let run = "Recognize Receipt"
     static let result = "Receipt JSON"
@@ -264,7 +243,6 @@ enum Strings {
     static let skipped = "Skipped"
     static let notRun = "Not run"
     static func seconds(_ value: Double) -> String { String(format: "%.2f s", value) }
-    static let emptyVision = "Vision returned no text. Please retry or review manually."
     static let outputLimit = "The image OCR reached its output limit and may be incomplete."
     static let diagnostics = "Diagnostic log"
     static let copyDiagnostics = "Copy diagnostic log"
@@ -272,23 +250,20 @@ enum Strings {
     static let visionEvidence = "Vision OCR · Reconstructed rows"
     static let visionCoordinates = "OCR coordinates and candidates"
     static let coordinateDescription = "Coordinates are normalized from the bottom-left of the final OCR image. Original observations and the rotation transform are retained below."
-    static let uncertainDirection = "Not enough consistent text to straighten the receipt. Original image used; check row alignment."
-    static let deskewFallback = "OCR returned no text after straightening. Original scan retained for review."
     static let retrySeparator = "\n\n--- Retry ---\n"
     static let amountEvidence = "Totals and charges JSON"
-    static let detailEvidence = "Merchant and items JSON"
-    static let initialJSON = "First JSON and checks"
+    static let settlementEvidence = "Selected checkout text"
+    static let settlementLayoutEvidence = "Checkout blocks and amount assignments"
+    static let detailEvidence = "Date, merchant and items JSON"
+    static let initialJSON = "Initial receipt JSON"
     static let rawJSON = "Merged receipt JSON"
-    static let checks = "Validation issues"
-    static let arithmeticNotice = "Balanced amounts do not guarantee that every receipt detail was recognized correctly."
     static let interruptedStage = "Interrupted"
     static func title(_ stage: ReceiptStage) -> String {
         switch stage {
         case .visionOCR: "1. VISION"
-        case .initialParse: "2. Totals and charges"
-        case .detailParse: "3. Merchant and items"
-        case .amountRetry: "Totals correction"
-        case .detailRetry: "Item correction"
+        case .settlementText: "2. Checkout text"
+        case .initialParse: "3. Totals from layout"
+        case .detailParse: "4. Date, merchant and items"
         }
     }
 }

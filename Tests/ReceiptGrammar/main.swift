@@ -50,7 +50,7 @@ func accepts(_ text: String, schemaText: String = schema) throws -> Bool {
     guard try feed(text, to: grammar), try allows(95, mask: grammar.computeMask()) else { return false }
     return try grammar.commitToken(95).isTerminated
 }
-let receipt = #"{"receipt_type":"restaurant","merchant":"Cafe","items":[{"name":"Noodles","total_price":"29.98"}],"totals":{"subtotal":"29.98","total":"26.98","discount":"-3.00"}}"#
+let receipt = #"{"date":"2026-11-11","merchant":"Cafe","items":[{"name":"Noodles","total_price":"29.98"}],"totals":{"subtotal":"29.98","total":"26.98","discount":"-3.00"}}"#
 expect(try accepts(receipt), "Complete simplified receipt matches compiled XGrammar schema")
 let itemsStart = receipt.range(of: "\"items\":[")!.upperBound
 let itemsEnd = receipt.range(of: "],\"totals\"")!.lowerBound
@@ -59,9 +59,9 @@ expect(try accepts(repeated), "Schema alone allows repeated purchase lines; sema
 expect(try accepts(receipt.replacingOccurrences(of: "\"26.98\"", with: "null")), "Unknown monetary null remains expressible")
 expect(try !accepts(receipt.replacingOccurrences(of: "\"26.98\"", with: "26.98")), "Numeric money tokens blocked")
 expect(try !accepts(receipt.replacingOccurrences(of: "\"26.98\"", with: "\"CAD26.98\"")), "Non-decimal monetary strings blocked")
-expect(try !accepts(receipt.replacingOccurrences(of: "\"restaurant\"", with: "\"invalid\"")), "Invalid enum blocked")
+expect(try !accepts(receipt.replacingOccurrences(of: "\"2026-11-11\"", with: "\"invalid\"")), "Invalid date format blocked")
 expect(try !accepts(receipt.replacingOccurrences(of: "\"merchant\":\"Cafe\",", with: "")), "Missing required field blocked")
-expect(try !accepts(receipt.replacingOccurrences(of: "\"receipt_type\":", with: "\"payment\":null,\"receipt_type\":")), "Removed payment field blocked")
+expect(try !accepts(receipt.replacingOccurrences(of: "\"date\":", with: "\"receipt_type\":null,\"date\":")), "Removed receipt_type field blocked")
 expect(try !accepts(receipt.replacingOccurrences(of: "\"merchant\":\"Cafe\",", with: "\"merchant\":\"Cafe\",\"merchant\":\"Cafe\",")), "Repeated key blocked")
 expect(try !accepts(receipt.replacingOccurrences(of: "\"name\":", with: "\"modifiers\":[],\"name\":")), "Removed modifiers field blocked during generation")
 expect(try !accepts(receipt + " extra"), "Text after JSON blocked")
@@ -106,7 +106,7 @@ if CommandLine.arguments.count > 1 {
     expect(try allows(eos, mask: actual.computeMask()), "Qwen EOS allowed only after completed receipt")
     expect(try actual.commitToken(Int32(eos)).isTerminated, "Downloaded Qwen vocabulary accepts complete receipt schema")
     let partial = try GrammarConstraint(tokenizer: actualTokenizer, jsonSchema: schema, fastForward: false)
-    for character in "{\"receipt_type\":\"restaurant\",\"merchant\":\"" {
+    for character in "{\"date\":\"2026-11-11\",\"merchant\":\"" {
         _ = try partial.commitToken(Int32(ids[String(character)]!))
     }
     let (partialMask, _) = ReceiptGrammarProcessor.tokenMask(try partial.computeMask(), vocabSize: pieces.count, logitCount: pieces.count + 32, excluding: Set([configEOS]).subtracting([eos]))

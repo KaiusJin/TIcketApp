@@ -48,7 +48,8 @@ actor ReceiptOCR {
             }
             let scan = OCRScan(observations: observations, originalObservations: first,
                                correctedObservations: correctedObservations, geometry: geometry)
-            InferenceDiagnostics.current?.event("vision_scan status=\(status.rawValue) rotation_degrees=\(rotation * 180 / .pi) observations=\(observations.count) rows=\(scan.rows.count)")
+            let layout = scan.priceLayout
+            InferenceDiagnostics.current?.event("vision_scan status=\(status.rawValue) rotation_degrees=\(rotation * 180 / .pi) observations=\(observations.count) rows=\(scan.rows.count) price_columns=\(layout.columns.count) reading_blocks=\(layout.blocks.count)")
             try Task.checkCancellation()
             return scan
         }
@@ -71,11 +72,26 @@ actor ReceiptOCR {
         return (request.results ?? []).map { observation in
             let box = observation.boundingBox
             func point(_ point: CGPoint) -> OCRLine.Point { .init(x: point.x, y: point.y) }
-            return OCRLine(candidates: observation.topCandidates(3).map {
+            let candidates = observation.topCandidates(3)
+            let amountRegions: [OCRLine.TextRegion] = candidates.first.map { candidate in
+                let raw = candidate.string
+                let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                let leadingCount = raw.prefix(while: { $0.isWhitespace }).utf16.count
+                return OCRPriceLayout.amountRanges(in: text).compactMap { range in
+                    let rawRange = NSRange(location: range.location + leadingCount, length: range.length)
+                    guard let substring = Range(rawRange, in: raw),
+                          let rectangle = try? candidate.boundingBox(for: substring) else { return nil }
+                    let bounds = rectangle.boundingBox
+                    return .init(location: range.location, length: range.length,
+                                 x: bounds.minX, y: bounds.minY, width: bounds.width, height: bounds.height)
+                }
+            } ?? []
+            return OCRLine(candidates: candidates.map {
                 .init(text: $0.string, confidence: $0.confidence)
             }, x: box.minX, y: box.minY, width: box.width, height: box.height,
                quadrilateral: .init(topLeft: point(observation.topLeft), topRight: point(observation.topRight),
-                                    bottomLeft: point(observation.bottomLeft), bottomRight: point(observation.bottomRight)), source: source)
+                                    bottomLeft: point(observation.bottomLeft), bottomRight: point(observation.bottomRight)),
+                           source: source, amountRegions: amountRegions)
         }
     }
 }
