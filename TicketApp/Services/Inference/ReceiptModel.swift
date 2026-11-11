@@ -44,26 +44,24 @@ actor ReceiptModel {
         loadedKind = nil
     }
 
-    func parse(vision: OCRScan, part: ReceiptExtractionPart, update: @escaping @MainActor @Sendable (String?, String) -> Void) async throws -> ModelOutput {
-        try await generate(prompt: NuExtractSchema.prompt(vision: vision, part: part), part: part, update: update)
+    func parse(vision: OCRScan, part: ReceiptExtractionPart) async throws -> ModelOutput {
+        try await generate(prompt: NuExtractSchema.prompt(vision: vision, part: part), part: part)
     }
 
-    func prepareAmounts(vision: OCRScan, update: @escaping @MainActor @Sendable (String?, String) -> Void) async throws -> ModelOutput {
-        try await generate(prompt: QwenAmountPrompt.prompt(vision: vision), part: nil, update: update)
+    func prepareAmounts(vision: OCRScan) async throws -> ModelOutput {
+        try await generate(prompt: QwenAmountPrompt.prompt(vision: vision), part: nil)
     }
 
-    func parseAmounts(text: String, update: @escaping @MainActor @Sendable (String?, String) -> Void) async throws -> ModelOutput {
-        try await generate(prompt: NuExtractSchema.amountPrompt(text: text), part: .amounts, update: update)
+    func parseAmounts(text: String) async throws -> ModelOutput {
+        try await generate(prompt: NuExtractSchema.amountPrompt(text: text), part: .amounts)
     }
 
-    func retryAmounts(text: String, report: String,
-                         update: @escaping @MainActor @Sendable (String?, String) -> Void) async throws -> ModelOutput {
-        try await generate(prompt: ReceiptSchema.amountRetryPrompt(text: text, report: report), part: .amounts, update: update)
+    func retryAmounts(text: String, report: String) async throws -> ModelOutput {
+        try await generate(prompt: ReceiptSchema.amountRetryPrompt(text: text, report: report), part: .amounts)
     }
 
     /// A nil extraction part selects Qwen's plain-text checkout stage.
-    private func generate(prompt: String, part: ReceiptExtractionPart?,
-                          update: @escaping @MainActor @Sendable (String?, String) -> Void) async throws -> ModelOutput {
+    private func generate(prompt: String, part: ReceiptExtractionPart?) async throws -> ModelOutput {
         guard !generating else { throw ReceiptError.modelBusy }
         let kind: ReceiptModelKind = part == nil ? .amounts : .text
         guard let weights, loadedKind == kind else { throw ReceiptError.missingTextModel }
@@ -75,7 +73,6 @@ actor ReceiptModel {
             let trace = InferenceDiagnostics.current
             trace?.beginGeneration(model: kind.rawValue)
             trace?.phase("input_prepare")
-            await update(nil, "Preparing input…")
             let vocab = llama_model_get_vocab(weights.pointer)!
             let tokens = try NuExtractTokens.tokenize(prompt, vocab: vocab)
             // Limit KV memory on phones. Reserve output space explicitly, with no
@@ -123,7 +120,6 @@ actor ReceiptModel {
                 let status = llama_decode(context, batch)
                 try Task.checkCancellation()
                 guard status == 0 else { throw ReceiptError.modelDecodeFailed }
-                await update(nil, "Reading evidence · \(end)/\(tokens.count) tokens")
             }
             trace?.phase("decode")
             var bytes: [UInt8] = []
@@ -133,7 +129,6 @@ actor ReceiptModel {
             var stopped = false
             var repetition = false
             var count = 0
-            var lastUpdate = ContinuousClock.now
             while count < outputLimit {
                 try Task.checkCancellation()
                 let token = llama_sampler_sample(sampler, context, -1)
@@ -157,17 +152,12 @@ actor ReceiptModel {
                         trace?.decodedText(text)
                     }
                 }
-                if count == 1 || lastUpdate.duration(to: .now) >= .milliseconds(250) {
-                    await update(result, "Extracting · \(count) tokens")
-                    lastUpdate = .now
-                }
                 NuExtractTokens.fill(&batch, tokens: [token][...], position: tokens.count + count - 1, finalLogits: true)
                 let status = llama_decode(context, batch)
                 try Task.checkCancellation()
                 guard status == 0 else { throw ReceiptError.modelDecodeFailed }
             }
             try Task.checkCancellation()
-            await update(result, "Stage finished")
             guard bytes.isEmpty else { throw ReceiptError.guidedGenerationFailed }
             let raw = ModelOutput(text: result, reachedLimit: !stopped && count >= outputLimit, repetitionDetected: repetition)
             trace?.event("generation_end tokens=\(count) complete=\(boundary.complete) limit=\(raw.reachedLimit) repetition=\(repetition)")
@@ -184,7 +174,6 @@ actor ReceiptModel {
                 throw error
             }
             try Task.checkCancellation()
-            await update(normalized.text, "Stage finished")
             return normalized
         } onCancel: {
             signal.cancel()

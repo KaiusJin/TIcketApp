@@ -129,6 +129,7 @@ private struct WalletNavigationBar: View {
                 Button(action: scan) {
                     Image(systemName: "plus").font(.system(size: 25, weight: .medium))
                         .foregroundStyle(Color.walletAccent).frame(width: 62, height: 62)
+                        .contentShape(.circle)
                 }
                 .buttonStyle(.plain)
                 .walletGlass(radius: 31, tint: Color.walletHighlight.opacity(0.6), interactive: true)

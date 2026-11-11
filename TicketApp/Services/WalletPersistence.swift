@@ -79,6 +79,7 @@ final class WalletPreferencesRecord {
     @Attribute(.unique) var id: String
     // Preserve decimal precision without converting money to floating point.
     var budgets: [String: String]
+    var budgetHistoryData: Data?
     var importedLegacyArchive: Bool
 
     init() {

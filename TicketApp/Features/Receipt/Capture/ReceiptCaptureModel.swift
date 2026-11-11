@@ -112,16 +112,13 @@ final class ReceiptCaptureModel {
                     vision: { try await self.ocr.recognize(imageData) },
                     load: { try await self.model.load($0) },
                     prepareAmounts: { scan in
-                        try await self.model.prepareAmounts(vision: scan) { [weak self] _, detail in
-                            self?.status = detail
-                        }
+                        try await self.model.prepareAmounts(vision: scan)
                     },
                     parse: { scan, part in
-                        try await self.model.parse(vision: scan, part: part) { [weak self] _, detail in
-                            self?.status = detail
-                        }
+                        try await self.model.parse(vision: scan, part: part)
                     },
                     emit: { self.receive($0) })
+                status = "Finishing receipt…"
                 await model.unload()
                 try Task.checkCancellation()
                 guard isActive else { throw CancellationError() }
@@ -148,9 +145,8 @@ final class ReceiptCaptureModel {
         switch event {
         case .stage(let stage):
             switch stage {
-            case .visionOCR: status = "Reading receipt text…"
-            case .settlementText: status = "Finding checkout amounts…"
-            case .initialParse: status = "Checking amounts…"
+            case .visionOCR: status = "Reading receipt…"
+            case .settlementText, .initialParse: status = "Reading totals…"
             case .detailParse: status = "Reading store and items…"
             }
             InferenceDiagnostics.current?.phase(stage.rawValue)

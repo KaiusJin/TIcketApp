@@ -94,6 +94,21 @@ final class LocalWalletRepository {
         }
     }
 
+    func loadBudgetHistory() throws -> [String: [BudgetRevision]] {
+        let context = try writableContext()
+        guard let data = try context.fetch(FetchDescriptor<WalletPreferencesRecord>()).first?.budgetHistoryData else { return [:] }
+        return try JSONDecoder().decode([String: [BudgetRevision]].self, from: data)
+    }
+
+    func saveBudgetHistory(_ history: [String: [BudgetRevision]]) throws {
+        let context = try writableContext()
+        guard let preferences = try context.fetch(FetchDescriptor<WalletPreferencesRecord>()).first else {
+            throw WalletPersistenceError.unavailable
+        }
+        preferences.budgetHistoryData = try JSONEncoder().encode(history)
+        do { try context.save() } catch { context.rollback(); throw error }
+    }
+
     func delete(_ receipt: SavedReceipt) throws {
         let context = try writableContext()
         guard let record = try record(for: receipt.id, in: context) else { return }

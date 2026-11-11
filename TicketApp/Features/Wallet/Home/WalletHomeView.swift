@@ -12,6 +12,7 @@ struct WalletHomeView: View {
     @State private var favoritesOnly = false
     @State private var showAll = false
     @State private var showsSearch = false
+    @State private var expandedReceiptID: UUID?
     @State private var selectedReceipt: SavedReceipt?
     @FocusState private var searchFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -31,11 +32,7 @@ struct WalletHomeView: View {
             return (query.isEmpty || text.localizedCaseInsensitiveContains(query))
                 && (selectedType == nil || receipt.category == selectedType)
                 && (!favoritesOnly || receipt.isFavorite)
-        }.sorted {
-            let left = $0.date ?? $0.createdAt
-            let right = $1.date ?? $1.createdAt
-            return left == right ? $0.createdAt > $1.createdAt : left > right
-        }
+        }.sorted { $0.createdAt > $1.createdAt }
     }
 
     private var visible: [SavedReceipt] {
@@ -46,15 +43,22 @@ struct WalletHomeView: View {
     private var animation: Animation? { reduceMotion ? nil : .spring(response: 0.48, dampingFraction: 0.9) }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                header
-                if !completedReceipts.isEmpty {
-                    collectionControls
-                    if showsSearch { searchField.transition(.opacity.combined(with: .move(edge: .top))) }
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    header
+                    if !completedReceipts.isEmpty {
+                        collectionControls
+                        if showsSearch { searchField.transition(.opacity.combined(with: .move(edge: .top))) }
+                    }
+                    receiptCollection
+                }.padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 32)
+            }
+            .onChange(of: expandedReceiptID) { _, id in
+                if let id {
+                    withAnimation(animation) { proxy.scrollTo(id, anchor: .center) }
                 }
-                receiptCollection
-            }.padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 32)
+            }
         }
         .scrollIndicators(.hidden).scrollDismissesKeyboard(.interactively)
         .walletPage()
@@ -130,7 +134,7 @@ struct WalletHomeView: View {
     private var filterMenu: some View {
         Menu {
             Picker("Sort receipts", selection: $sortByType) {
-                Text("By date").tag(false)
+                Text("Recently added").tag(false)
                 Text("By type").tag(true)
             }
             Menu("Type") {
@@ -195,94 +199,167 @@ struct WalletHomeView: View {
     }
 
     private func receiptStack(_ receipts: [SavedReceipt]) -> some View {
-        WalletReceiptStack(receipts: receipts) { receipt in
-            searchFocused = false
-            selectedReceipt = receipt
-        }
+        WalletReceiptStack(
+            receipts: receipts, expandedReceiptID: expandedReceiptID,
+            expand: { id in
+                searchFocused = false
+                withAnimation(animation) { expandedReceiptID = id }
+            },
+            select: { receipt in
+                searchFocused = false
+                selectedReceipt = receipt
+            })
     }
 }
 
 private struct WalletReceiptStack: View {
     let receipts: [SavedReceipt]
+    let expandedReceiptID: UUID?
+    let expand: (UUID?) -> Void
     let select: (SavedReceipt) -> Void
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @ScaledMetric(relativeTo: .body) private var cardHeight = 214.0
-    @ScaledMetric(relativeTo: .body) private var exposedHeight = 84.0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .body) private var cardHeight = 248.0
+    @ScaledMetric(relativeTo: .body) private var exposedHeight = 176.0
+    @ScaledMetric(relativeTo: .body) private var expandedHeight = 280.0
 
     var body: some View {
-        VStack(spacing: dynamicTypeSize >= .xxLarge ? 16 : 0) {
+        VStack(spacing: 0) {
             ForEach(Array(receipts.enumerated()), id: \.element.id) { index, receipt in
+                let isExpanded = expandedReceiptID == receipt.id
                 Button {
-                    select(receipt)
+                    if isExpanded {
+                        select(receipt)
+                    } else {
+                        expand(receipt.id)
+                    }
                 } label: {
                     WalletReceiptPass(
-                        receipt: receipt, height: dynamicTypeSize >= .xxLarge ? nil : cardHeight)
+                        receipt: receipt, isExpanded: isExpanded,
+                        height: isExpanded || dynamicTypeSize >= .xxLarge ? nil : cardHeight,
+                        minimumHeight: isExpanded ? expandedHeight : nil)
                 }
                 .buttonStyle(.plain)
-                .accessibilityHint("View receipt details")
-                .background {
-                    RoundedRectangle(cornerRadius: 28)
-                        .fill(Color.receiptPass(at: index).gradient)
-                        .opacity(reduceTransparency ? 1 : 0.88)
-                        .background(.ultraThinMaterial, in: .rect(cornerRadius: 28))
+                .accessibilityHint(isExpanded ? "View receipt details" : "Expand receipt")
+                .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+                .background(Color.receiptPass(at: index))
+                .overlay(alignment: .topTrailing) {
+                    if isExpanded {
+                        Button { expand(nil) } label: {
+                            Image(systemName: "chevron.up")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(Color.walletAccent)
+                                .frame(width: 44, height: 44)
+                                .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 10).padding(.trailing, 48)
+                        .accessibilityLabel("Collapse receipt")
+                        .transition(.opacity)
+                    }
                 }
-                .clipShape(.rect(cornerRadius: 28))
-                .shadow(color: Color.walletAccent.opacity(0.035), radius: 5, x: 0, y: 2)
-                .padding(.top, index == 0 || dynamicTypeSize >= .xxLarge ? 0 : -(cardHeight - exposedHeight))
-                // The upper pass covers the next pass, leaving its merchant and amount exposed below.
-                .zIndex(Double(receipts.count - index))
+                .clipShape(
+                    ReceiptPaper(cornerRadius: 28, holeInset: 32), style: FillStyle(eoFill: true))
+                .offset(y: isExpanded && !reduceMotion ? -8 : 0)
+                .padding(.top, spacing(before: index))
+                .zIndex(isExpanded ? Double(receipts.count) : Double(index))
                 .id(receipt.id)
             }
         }
+    }
+
+    private func spacing(before index: Int) -> CGFloat {
+        guard index > 0 else { return 0 }
+        if dynamicTypeSize >= .xxLarge || receipts[index - 1].id == expandedReceiptID { return 16 }
+        return -(cardHeight - exposedHeight)
     }
 }
 
 private struct WalletReceiptPass: View {
     let receipt: SavedReceipt
+    let isExpanded: Bool
     let height: CGFloat?
+    let minimumHeight: CGFloat?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var previewItems: [ReceiptItem] { Array(receipt.items.prefix(2)) }
+    private var remainingItems: Int { max(receipt.items.count - 2, 0) }
+    private var wrapsText: Bool { isExpanded || dynamicTypeSize >= .xxLarge }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Image(systemName: (receipt.category ?? .other).symbol).font(.system(size: 28, weight: .light))
-                    .foregroundStyle(Color.walletAccent.opacity(0.8))
-                Spacer()
-                Circle().fill(Color.walletBackground.opacity(0.9)).frame(width: 10, height: 10)
-                    .accessibilityHidden(true)
-            }
-            Spacer(minLength: 18)
-            let layout =
-                dynamicTypeSize >= .xxLarge
-                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
-                : AnyLayout(HStackLayout(spacing: 12))
-            layout {
-                VStack(alignment: .leading, spacing: 7) {
+            // Keep the summary and two-item preview above the next overlapping card.
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(alignment: .top, spacing: 12) {
                     Text(receipt.merchant).font(.system(.headline, weight: .semibold))
-                        .lineLimit(dynamicTypeSize >= .xxLarge ? nil : 1)
+                        .lineLimit(wrapsText ? nil : 1)
+                    Spacer(minLength: 0)
+                    Color.clear.frame(width: isExpanded ? 68 : 16, height: 16)
+                        .accessibilityHidden(true)
+                }
+                let layout =
+                    dynamicTypeSize >= .xxLarge
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+                    : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 12))
+                layout {
                     Text(
                         receipt.date?.formatted(.dateTime.month(.abbreviated).day().year())
                             ?? "Date needs review"
                     )
                     .font(.caption).foregroundStyle(Color.walletSecondary)
+                    .lineLimit(dynamicTypeSize >= .xxLarge ? nil : 1)
+                    .minimumScaleFactor(0.8)
+                    if dynamicTypeSize < .xxLarge { Spacer(minLength: 0) }
+                    Text(WalletMoney.string(receipt.total, currency: receipt.currency))
+                        .font(.system(.title3, weight: .medium)).monospacedDigit().lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .layoutPriority(1)
                 }
-                if dynamicTypeSize < .xxLarge { Spacer(minLength: 0) }
-                Text(WalletMoney.string(receipt.total, currency: receipt.currency))
-                    .font(.system(.title3, weight: .medium)).monospacedDigit().lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .layoutPriority(1)
             }
+            itemPreview.padding(.top, 12)
+            Spacer(minLength: 18)
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Label(
+                    (receipt.category ?? .other).title,
+                    systemImage: (receipt.category ?? .other).symbol)
+                Spacer(minLength: 0)
+                Text(isExpanded ? "View receipt" : "Tap to expand")
+                if isExpanded { Image(systemName: "chevron.right") }
+            }
+            .font(.caption).foregroundStyle(Color.walletAccent)
         }
-        .padding(24).frame(height: height)
+        .padding(24).frame(height: height, alignment: .top)
+        .frame(minHeight: minimumHeight, alignment: .top)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(.rect(cornerRadius: 28))
+        .fixedSize(horizontal: false, vertical: true)
+        .contentShape(ReceiptPaper(cornerRadius: 28, holeInset: 32), eoFill: true)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
-            [
+            ([
                 receipt.merchant,
                 receipt.date?.formatted(date: .abbreviated, time: .omitted) ?? "Date needs review",
                 WalletMoney.string(receipt.total, currency: receipt.currency),
-            ].joined(separator: ", "))
+            ] + previewItems.map(\.name) + (remainingItems > 0 ? ["\(remainingItems) more items"] : []))
+                .joined(separator: ", "))
+    }
+
+    private var itemPreview: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if previewItems.isEmpty {
+                Text("No items added").font(.subheadline)
+            } else {
+                ForEach(previewItems) { item in
+                    Text(item.name.isEmpty ? "Needs review" : item.name)
+                        .font(.subheadline)
+                        .lineLimit(wrapsText ? nil : 1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if remainingItems > 0 {
+                    Text("+\(remainingItems) more").font(.caption.weight(.medium))
+                        .foregroundStyle(Color.walletAccent)
+                }
+            }
+        }
+        .foregroundStyle(Color.walletSecondary)
     }
 }

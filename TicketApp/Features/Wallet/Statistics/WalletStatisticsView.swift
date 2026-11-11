@@ -59,7 +59,7 @@ struct WalletStatisticsView: View {
                 }
             }.padding(.horizontal, 24).padding(.top, 12).padding(.bottom, 24)
         }.scrollIndicators(.hidden).walletPage()
-            .sheet(isPresented: $showBudget) { BudgetEditor(store: store, currency: currency) }
+            .sheet(isPresented: $showBudget) { WalletBudgetView(store: store, currency: currency) }
     }
 
     private var monthPicker: some View {
@@ -195,81 +195,13 @@ struct WalletStatisticsView: View {
     }
 
     private var budgetCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        Button { showBudget = true } label: {
             HStack {
-                AdaptiveValueRow {
-                    Text("Monthly budget").font(.title3.weight(.semibold)).tracking(-0.5)
-                } value: {
-                    if let budget = store.budget(for: currency), budget > 0 {
-                        Text(WalletMoney.string(budget, currency: currency)).font(.subheadline)
-                            .foregroundStyle(Color.walletSecondary)
-                    }
-                }
-                Button {
-                    showBudget = true
-                } label: {
-                    Image(systemName: "slider.horizontal.3").frame(width: 40, height: 40)
-                }
-                .accessibilityLabel("Edit budget").accessibilityIdentifier("editBudget")
-            }
-            if let budget = store.budget(for: currency), budget > 0 {
-                let balance = budget - total
-                let balanceLayout =
-                    dynamicTypeSize.isAccessibilitySize
-                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 7))
-                    : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 7))
-                balanceLayout {
-                    Text(WalletMoney.string(abs(balance), currency: currency)).font(
-                        .system(.title, design: .rounded, weight: .medium)
-                    ).tracking(-1)
-                        .lineLimit(1).minimumScaleFactor(0.6)
-                    Text(balance >= 0 ? "left to spend" : "over budget")
-                        .font(.caption).foregroundStyle(Color.walletSecondary)
-                }
-                ProgressView(value: min(max(NSDecimalNumber(decimal: total / budget).doubleValue, 0), 1))
-                    .tint(balance >= 0 ? Color.walletAccent : .orange)
-            } else {
-                Button("Set a budget") { showBudget = true }.font(.subheadline.weight(.semibold))
-            }
-        }
-    }
-}
-
-private struct BudgetEditor: View {
-    let store: WalletStore
-    let currency: String
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var amount = ""
-    @State private var error: String?
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextField("Monthly limit", text: $amount).keyboardType(.decimalPad)
-                        .accessibilityIdentifier("budgetAmount")
-                } header: {
-                    Text("Monthly budget · \(currency)")
-                }
-                if let error { Text(error).foregroundStyle(.red) }
-                Button("Remove budget", role: .destructive) { save(nil) }
-            }.scrollContentBackground(.hidden).walletPage().navigationTitle("Monthly budget")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { save(WalletMoney.parse(amount)) }
-                            .disabled((WalletMoney.parse(amount) ?? 0) <= 0)
-                    }
-                }
-        }
-        .presentationDetents(dynamicTypeSize.isAccessibilitySize ? [.large] : [.medium])
-        .onAppear { amount = WalletMoney.input(store.budget(for: currency)) }
-    }
-    private func save(_ value: Decimal?) {
-        do {
-            try store.setBudget(value, currency: currency)
-            dismiss()
-        } catch { self.error = error.localizedDescription }
+                Label("Budget", systemImage: "chart.pie")
+                    .font(.title3.weight(.semibold))
+                Spacer()
+                Image(systemName: "chevron.right")
+            }.padding(20).walletGlass(tint: Color.walletHighlight.opacity(0.3))
+        }.buttonStyle(.plain).accessibilityIdentifier("editBudget")
     }
 }

@@ -5,6 +5,7 @@ import Observation
 final class WalletStore {
     private(set) var receipts: [SavedReceipt] = []
     private(set) var budgets: [String: Decimal] = [:]
+    private(set) var budgetHistory: [String: [BudgetRevision]] = [:]
     var error: String?
     private let repository: LocalWalletRepository
 
@@ -14,11 +15,18 @@ final class WalletStore {
             let archive = try repository.load()
             receipts = archive.receipts
             budgets = archive.budgets
+            budgetHistory = try repository.loadBudgetHistory()
+            for (currency, amount) in budgets where budgetHistory[currency] == nil {
+                var plan = BudgetPlan()
+                plan.total = BudgetLimit(enabled: true, amount: amount)
+                budgetHistory[currency] = [BudgetRevision(effective: plan.interval(containing: .now).start, plan: plan)]
+            }
+            try repository.saveBudgetHistory(budgetHistory)
         } catch { self.error = error.localizedDescription }
     }
 
     var currencies: [String] {
-        Array(Set(receipts.filter { $0.status == .completed }.map(\.currency)).union(["CAD"])).sorted()
+        Array(Set(receipts.filter { $0.status == .completed }.map(\.currency)).union(budgetHistory.keys).union(["CAD"])).sorted()
     }
 
     func receipt(id: UUID) -> SavedReceipt? { receipts.first { $0.id == id } }
@@ -39,6 +47,25 @@ final class WalletStore {
     func setBudget(_ value: Decimal?, currency: String) throws {
         try repository.setBudget(value, currency: currency)
         budgets[currency] = value
+    }
+
+    func budgetPlan(for currency: String, at date: Date = .now) -> BudgetPlan? {
+        budgetHistory[currency]?.last(where: { $0.effective <= date })?.plan
+    }
+
+    func saveBudgetPlan(_ plan: BudgetPlan, currency: String) throws {
+        guard plan.isValid else { throw BudgetValidationError.invalidLimit }
+        var history = budgetHistory
+        let now = Date()
+        let effective = history[currency] == nil ? plan.interval(containing: now).start : now
+        history[currency, default: []].append(BudgetRevision(effective: effective, plan: plan))
+        try repository.saveBudgetHistory(history)
+        budgetHistory = history
+        refreshBudgetNotifications()
+    }
+
+    func refreshBudgetNotifications() {
+        BudgetNotifications.shared.refresh(receipts: receipts, history: budgetHistory)
     }
 
     func createDraft(imageData: Data? = nil) throws -> SavedReceipt {
@@ -114,6 +141,7 @@ final class WalletStore {
     func delete(_ receipt: SavedReceipt) throws {
         try repository.delete(receipt)
         receipts.removeAll { $0.id == receipt.id }
+        refreshBudgetNotifications()
     }
 
     func toggleFavorite(_ receipt: SavedReceipt) {
@@ -137,5 +165,6 @@ final class WalletStore {
         } else {
             receipts.append(receipt)
         }
+        refreshBudgetNotifications()
     }
 }

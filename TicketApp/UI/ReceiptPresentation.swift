@@ -91,19 +91,21 @@ private struct MerchantMark: View {
     }
 }
 
-private struct ReceiptPaper: Shape {
+struct ReceiptPaper: Shape {
     var hole: CGFloat = 1
+    var cornerRadius: CGFloat = 26
+    var holeInset: CGFloat = 28
     var animatableData: CGFloat {
         get { hole }
         set { hole = newValue }
     }
     func path(in rect: CGRect) -> Path {
-        var path = Path(roundedRect: rect, cornerRadius: 26)
+        var path = Path(roundedRect: rect, cornerRadius: cornerRadius)
         if hole > 0 {
-            let diameter = 12 * hole
+            let diameter = 16 * hole
             path.addEllipse(
                 in: CGRect(
-                    x: rect.maxX - 28 - diameter / 2, y: 28 - diameter / 2,
+                    x: rect.maxX - holeInset - diameter / 2, y: rect.minY + holeInset - diameter / 2,
                     width: diameter, height: diameter))
         }
         return path
