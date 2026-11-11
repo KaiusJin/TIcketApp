@@ -43,12 +43,12 @@
 			path = TicketApp;
 			sourceTree = "<group>";
 		};
-		01B665AA30A393850067E829 /* TicketAppTests */ = {
+		01B665AA30A393850067E829 /* Tests/Unit */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Tests/Unit;
 			sourceTree = "<group>";
 		};
-		01B665B430A393850067E829 /* TicketAppUITests */ = {
+		01B665B430A393850067E829 /* Tests/UI */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Tests/UI;
 			sourceTree = "<group>";
@@ -94,8 +94,8 @@
 				BB0000000000000000000004 /* models/NuExtract/NuExtract-1.5-smol-Q4_K_M.gguf */,
 				BB0000000000000000000006 /* models/Qwen3-0.6B-GGUF/Qwen_Qwen3-0.6B-Q4_K_M.gguf */,
 				01B6659C30A393840067E829 /* TicketApp */,
-				01B665AA30A393850067E829 /* TicketAppTests */,
-				01B665B430A393850067E829 /* TicketAppUITests */,
+				01B665AA30A393850067E829 /* Tests/Unit */,
+				01B665B430A393850067E829 /* Tests/UI */,
 				0172895730A3CF01008C6486 /* Frameworks */,
 				01B6659B30A393840067E829 /* Products */,
 			);
@@ -151,7 +151,7 @@
 				01B665A930A393850067E829 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				01B665AA30A393850067E829 /* TicketAppTests */,
+				01B665AA30A393850067E829 /* Tests/Unit */,
 			);
 			name = TicketAppTests;
 			packageProductDependencies = (
@@ -174,7 +174,7 @@
 				01B665B330A393850067E829 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				01B665B430A393850067E829 /* TicketAppUITests */,
+				01B665B430A393850067E829 /* Tests/UI */,
 			);
 			name = TicketAppUITests;
 			packageProductDependencies = (
@@ -423,12 +423,13 @@
 				DEVELOPMENT_TEAM = J4MMPTY498;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Pebble;
+				INFOPLIST_KEY_CFBundleDisplayName = "Receipt Wallet";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Photograph a receipt to read and save it privately on your iPhone.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -442,7 +443,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -456,12 +457,13 @@
 				DEVELOPMENT_TEAM = J4MMPTY498;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Pebble;
+				INFOPLIST_KEY_CFBundleDisplayName = "Receipt Wallet";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Photograph a receipt to read and save it privately on your iPhone.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -475,7 +477,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -495,7 +497,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TicketApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TicketApp";
 			};
 			name = Debug;
@@ -516,7 +518,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TicketApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TicketApp";
 			};
 			name = Release;
@@ -535,7 +537,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 				TEST_TARGET_NAME = TicketApp;
 			};
 			name = Debug;
@@ -554,7 +556,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 				TEST_TARGET_NAME = TicketApp;
 			};
 			name = Release;

@@ -3,7 +3,16 @@ import Vision
 import CoreImage
 
 actor ReceiptOCR {
-    func recognize(_ data: Data) throws -> OCRScan {
+    func recognize(_ data: Data) async throws -> OCRScan {
+        let cancellation = OCRCancellation()
+        return try await withTaskCancellationHandler {
+            try recognize(data, cancellation: cancellation)
+        } onCancel: {
+            cancellation.cancel()
+        }
+    }
+
+    private func recognize(_ data: Data, cancellation: OCRCancellation) throws -> OCRScan {
         try Task.checkCancellation()
         return try autoreleasepool {
             guard let decoded = CIImage(data: data, options: [.applyOrientationProperty: true]) else {
@@ -11,7 +20,7 @@ actor ReceiptOCR {
             }
             let original = decoded.transformed(by: CGAffineTransform(translationX: -decoded.extent.minX,
                                                                      y: -decoded.extent.minY))
-            let first = try recognizeText(original, phase: "vision_initial")
+            let first = try recognizeText(original, phase: "vision_initial", cancellation: cancellation)
             let angle = ReceiptDeskew.estimate(first, width: original.extent.width, height: original.extent.height)
             var image = original
             var observations = first
@@ -23,7 +32,7 @@ actor ReceiptOCR {
                 try Task.checkCancellation()
                 InferenceDiagnostics.current?.phase("vision_deskew")
                 let corrected = try ReceiptDeskew.rotate(original, radians: -angle)
-                let second = try recognizeText(corrected.image, phase: "vision_corrected", source: .corrected)
+                let second = try recognizeText(corrected.image, phase: "vision_corrected", source: .corrected, cancellation: cancellation)
                 correctedObservations = second
                 if second.contains(where: { !$0.text.isEmpty }) {
                     image = corrected.image
@@ -55,18 +64,26 @@ actor ReceiptOCR {
         }
     }
 
-    private func recognizeText(_ image: CIImage, phase: String, source: OCRLine.Source = .initial) throws -> [OCRLine] {
+    private func recognizeText(
+        _ image: CIImage, phase: String, source: OCRLine.Source = .initial, cancellation: OCRCancellation
+    ) throws -> [OCRLine] {
         try Task.checkCancellation()
         let trace = InferenceDiagnostics.current
         trace?.phase(phase)
         let request = VNRecognizeTextRequest()
+        cancellation.setRequest(request)
+        defer { cancellation.setRequest(nil) }
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = true
         request.automaticallyDetectsLanguage = true
         let supported = try request.supportedRecognitionLanguages()
         request.recognitionLanguages = ["zh-Hans", "zh-Hant", "en-US", "fr-CA"].filter(supported.contains)
         trace?.event("vision_request width=\(Int(image.extent.width)) height=\(Int(image.extent.height)) languages=\(request.recognitionLanguages.joined(separator: ","))")
-        try VNImageRequestHandler(ciImage: image).perform([request])
+        do { try VNImageRequestHandler(ciImage: image).perform([request]) }
+        catch {
+            try Task.checkCancellation()
+            throw error
+        }
         try Task.checkCancellation()
         trace?.event("vision_complete observations=\(request.results?.count ?? 0)")
         return (request.results ?? []).map { observation in
@@ -93,5 +110,27 @@ actor ReceiptOCR {
                                     bottomLeft: point(observation.bottomLeft), bottomRight: point(observation.bottomRight)),
                            source: source, amountRegions: amountRegions)
         }
+    }
+}
+
+nonisolated private final class OCRCancellation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var request: VNRequest?
+    private var cancelled = false
+
+    func setRequest(_ request: VNRequest?) {
+        lock.lock()
+        self.request = request
+        let shouldCancel = cancelled
+        lock.unlock()
+        if shouldCancel { request?.cancel() }
+    }
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        let current = request
+        lock.unlock()
+        current?.cancel()
     }
 }

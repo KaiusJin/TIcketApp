@@ -26,7 +26,12 @@ actor ReceiptModel {
         weights = nil
         loadedKind = nil
         InferenceDiagnostics.current?.phase("model_load")
-        let loaded = try NuExtractWeights(url: url)
+        let signal = NuExtractCancellation()
+        let loaded = try await withTaskCancellationHandler {
+            try NuExtractWeights(url: url, cancellation: signal)
+        } onCancel: {
+            signal.cancel()
+        }
         try Task.checkCancellation()
         weights = loaded
         loadedKind = kind
@@ -70,7 +75,7 @@ actor ReceiptModel {
             let trace = InferenceDiagnostics.current
             trace?.beginGeneration(model: kind.rawValue)
             trace?.phase("input_prepare")
-            await update(nil, Strings.preparing)
+            await update(nil, "Preparing input…")
             let vocab = llama_model_get_vocab(weights.pointer)!
             let tokens = try NuExtractTokens.tokenize(prompt, vocab: vocab)
             // Limit KV memory on phones. Reserve output space explicitly, with no
@@ -118,7 +123,7 @@ actor ReceiptModel {
                 let status = llama_decode(context, batch)
                 try Task.checkCancellation()
                 guard status == 0 else { throw ReceiptError.modelDecodeFailed }
-                await update(nil, Strings.prefilling(end, total: tokens.count))
+                await update(nil, "Reading evidence · \(end)/\(tokens.count) tokens")
             }
             trace?.phase("decode")
             var bytes: [UInt8] = []
@@ -153,7 +158,7 @@ actor ReceiptModel {
                     }
                 }
                 if count == 1 || lastUpdate.duration(to: .now) >= .milliseconds(250) {
-                    await update(result, Strings.generating(count))
+                    await update(result, "Extracting · \(count) tokens")
                     lastUpdate = .now
                 }
                 NuExtractTokens.fill(&batch, tokens: [token][...], position: tokens.count + count - 1, finalLogits: true)
@@ -162,7 +167,7 @@ actor ReceiptModel {
                 guard status == 0 else { throw ReceiptError.modelDecodeFailed }
             }
             try Task.checkCancellation()
-            await update(result, Strings.finished)
+            await update(result, "Stage finished")
             guard bytes.isEmpty else { throw ReceiptError.guidedGenerationFailed }
             let raw = ModelOutput(text: result, reachedLimit: !stopped && count >= outputLimit, repetitionDetected: repetition)
             trace?.event("generation_end tokens=\(count) complete=\(boundary.complete) limit=\(raw.reachedLimit) repetition=\(repetition)")
@@ -179,7 +184,7 @@ actor ReceiptModel {
                 throw error
             }
             try Task.checkCancellation()
-            await update(normalized.text, Strings.finished)
+            await update(normalized.text, "Stage finished")
             return normalized
         } onCancel: {
             signal.cancel()
@@ -195,11 +200,20 @@ nonisolated private final class NuExtractWeights {
         llama_backend_init()
     }()
 
-    init(url: URL) throws {
+    init(url: URL, cancellation: NuExtractCancellation) throws {
+        guard !cancellation.isCancelled else { throw CancellationError() }
         _ = Self.backend
         var parameters = llama_model_default_params()
         parameters.n_gpu_layers = -1
-        guard let pointer = llama_model_load_from_file(url.path, parameters) else { throw ReceiptError.modelLoadFailed }
+        parameters.progress_callback = { _, opaque in
+            guard let opaque else { return true }
+            return !Unmanaged<NuExtractCancellation>.fromOpaque(opaque).takeUnretainedValue().isCancelled
+        }
+        parameters.progress_callback_user_data = Unmanaged.passUnretained(cancellation).toOpaque()
+        guard let pointer = llama_model_load_from_file(url.path, parameters) else {
+            if cancellation.isCancelled { throw CancellationError() }
+            throw ReceiptError.modelLoadFailed
+        }
         self.pointer = pointer
     }
 
