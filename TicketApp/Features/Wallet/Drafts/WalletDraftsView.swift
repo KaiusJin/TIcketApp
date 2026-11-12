@@ -25,7 +25,7 @@ struct WalletDraftsView: View {
                                         Text(draft.status.title).font(.caption).foregroundStyle(
                                             Color.walletAccent)
                                     }
-                                    Text(draft.createdAt.formatted(date: .abbreviated, time: .shortened))
+                                    Text(WalletDate.day(draft.createdAt))
                                         .font(.caption).foregroundStyle(Color.walletSecondary)
                                     if draft.status == .processing {
                                         if processor.activeReceiptID == draft.id {
@@ -39,7 +39,9 @@ struct WalletDraftsView: View {
                                     }
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(18).walletGlass(radius: 22)
+                                .padding(18)
+                                .contentShape(.rect(cornerRadius: 22))
+                                .walletGlass(radius: 22)
                             }
                             .buttonStyle(.plain)
                             .accessibilityIdentifier("draft_\(draft.id.uuidString)")

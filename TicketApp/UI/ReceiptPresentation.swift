@@ -13,7 +13,7 @@ struct ReceiptPaperContent: View {
                 Text(receipt.displayMerchant).font(.title2.weight(.semibold)).tracking(-0.7)
                     .multilineTextAlignment(
                         .center)
-                Text(receipt.date?.formatted(.dateTime.month(.wide).day().year()) ?? "Date needs review")
+                Text(receipt.date.map(WalletDate.day) ?? "Date needs review")
                     .font(.caption).foregroundStyle(Color.walletSecondary)
                 if let type = receipt.category {
                     Label(type.title, systemImage: type.symbol)

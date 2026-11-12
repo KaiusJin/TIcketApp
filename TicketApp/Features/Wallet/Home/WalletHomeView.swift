@@ -11,7 +11,7 @@ struct WalletHomeView: View {
     @State private var selectedType: ReceiptCategory?
     @State private var favoritesOnly = false
     @State private var showAll = false
-    @State private var showsSearch = false
+    @Binding var showsSearch: Bool
     @State private var expandedReceiptID: UUID?
     @State private var selectedReceipt: SavedReceipt?
     @FocusState private var searchFocused: Bool
@@ -26,7 +26,7 @@ struct WalletHomeView: View {
         return completedReceipts.filter { receipt in
             let text =
                 ([
-                    receipt.merchant, receipt.date?.formatted(date: .abbreviated, time: .omitted) ?? "",
+                    receipt.merchant, receipt.date.map(WalletDate.day) ?? "",
                     receipt.date?.formatted(.iso8601.year().month().day().dateSeparator(.dash)) ?? "",
                 ] + receipt.items.map(\.name)).joined(separator: " ")
             return (query.isEmpty || text.localizedCaseInsensitiveContains(query))
@@ -49,7 +49,6 @@ struct WalletHomeView: View {
                     header
                     if !completedReceipts.isEmpty {
                         collectionControls
-                        if showsSearch { searchField.transition(.opacity.combined(with: .move(edge: .top))) }
                     }
                     receiptCollection
                 }.padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 32)
@@ -62,6 +61,13 @@ struct WalletHomeView: View {
         }
         .scrollIndicators(.hidden).scrollDismissesKeyboard(.interactively)
         .walletPage()
+        .onChange(of: completedReceipts.isEmpty) { _, isEmpty in
+            if isEmpty {
+                showsSearch = false
+                search = ""
+                searchFocused = false
+            }
+        }
         .navigationDestination(
             isPresented: Binding(
                 get: { selectedReceipt != nil },
@@ -82,6 +88,7 @@ struct WalletHomeView: View {
             Button(action: openDrafts) {
                 Image(systemName: "tray").font(.system(size: 18, weight: .regular))
                     .frame(width: 44, height: 44)
+                    .contentShape(.circle)
                     .overlay(alignment: .topTrailing) {
                         if draftCount > 0 {
                             Text(draftCount > 99 ? "99+" : "\(draftCount)")
@@ -97,6 +104,7 @@ struct WalletHomeView: View {
             Button(action: openSettings) {
                 Image(systemName: "gearshape").font(.system(size: 18, weight: .regular))
                     .frame(width: 44, height: 44)
+                    .contentShape(.circle)
             }.buttonStyle(.plain).walletGlass(radius: 22, interactive: true)
                 .accessibilityLabel("Settings").accessibilityIdentifier("walletSettings")
         }
@@ -104,16 +112,22 @@ struct WalletHomeView: View {
 
     private var collectionControls: some View {
         HStack(spacing: 12) {
-            if let type = selectedType {
-                Text(type.title).font(.subheadline).foregroundStyle(Color.walletSecondary)
-            } else if favoritesOnly {
-                Text("Favorites").font(.subheadline).foregroundStyle(Color.walletSecondary)
-            }
-            Spacer(minLength: 0)
-            if filtered.count > 5 && !sortByType && search.isEmpty && selectedType == nil && !favoritesOnly {
-                Button(showAll ? "Recent" : "See all") {
-                    withAnimation(animation) { showAll.toggle() }
-                }.font(.subheadline).accessibilityIdentifier("seeAllReceipts")
+            if showsSearch {
+                searchField
+                    .frame(maxWidth: .infinity)
+                    .transition(.opacity)
+            } else {
+                if let type = selectedType {
+                    Text(type.title).font(.subheadline).foregroundStyle(Color.walletSecondary)
+                } else if favoritesOnly {
+                    Text("Favorites").font(.subheadline).foregroundStyle(Color.walletSecondary)
+                }
+                Spacer(minLength: 0)
+                if filtered.count > 5 && !sortByType && search.isEmpty && selectedType == nil && !favoritesOnly {
+                    Button(showAll ? "Recent" : "See all") {
+                        withAnimation(animation) { showAll.toggle() }
+                    }.font(.subheadline).accessibilityIdentifier("seeAllReceipts")
+                }
             }
             Button {
                 withAnimation(animation) { showsSearch.toggle() }
@@ -126,6 +140,7 @@ struct WalletHomeView: View {
             } label: {
                 Image(systemName: showsSearch ? "xmark" : "magnifyingglass").font(.system(size: 17))
                     .frame(width: 44, height: 44)
+                    .contentShape(.rect)
             }.buttonStyle(.plain).accessibilityLabel(showsSearch ? "Close" : "Search receipts")
             filterMenu
         }.padding(.top, -12).padding(.bottom, -8)
@@ -158,6 +173,7 @@ struct WalletHomeView: View {
                     ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease"
             )
             .font(.system(size: 18)).frame(width: 44, height: 44)
+            .contentShape(.rect)
         }.accessibilityLabel("Sort receipts").accessibilityIdentifier("sortReceipts")
     }
 
@@ -219,9 +235,9 @@ private struct WalletReceiptStack: View {
     let select: (SavedReceipt) -> Void
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ScaledMetric(relativeTo: .body) private var cardHeight = 248.0
-    @ScaledMetric(relativeTo: .body) private var exposedHeight = 176.0
-    @ScaledMetric(relativeTo: .body) private var expandedHeight = 280.0
+    @ScaledMetric(relativeTo: .body) private var cardHeight = 136.0
+    @ScaledMetric(relativeTo: .body) private var exposedHeight = 104.0
+    @ScaledMetric(relativeTo: .body) private var expandedHeight = 260.0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -243,19 +259,19 @@ private struct WalletReceiptStack: View {
                 .accessibilityHint(isExpanded ? "View receipt details" : "Expand receipt")
                 .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
                 .background(Color.receiptPass(at: index))
-                .overlay(alignment: .topTrailing) {
-                    if isExpanded {
-                        Button { expand(nil) } label: {
-                            Image(systemName: "chevron.up")
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(Color.walletAccent)
-                                .frame(width: 44, height: 44)
-                                .contentShape(.rect)
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 24)
+                        .onEnded { value in
+                            guard isExpanded,
+                                abs(value.translation.height) >= 24,
+                                abs(value.translation.height) > abs(value.translation.width)
+                            else { return }
+                            expand(nil)
                         }
-                        .buttonStyle(.plain)
-                        .padding(.top, 10).padding(.trailing, 48)
-                        .accessibilityLabel("Collapse receipt")
-                        .transition(.opacity)
+                )
+                .accessibilityActions {
+                    if isExpanded {
+                        Button("Collapse receipt") { expand(nil) }
                     }
                 }
                 .clipShape(
@@ -282,19 +298,19 @@ private struct WalletReceiptPass: View {
     let minimumHeight: CGFloat?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    private var previewItems: [ReceiptItem] { Array(receipt.items.prefix(2)) }
-    private var remainingItems: Int { max(receipt.items.count - 2, 0) }
+    private var previewItems: [ReceiptItem] { Array(receipt.items.prefix(3)) }
+    private var remainingItems: Int { max(receipt.items.count - 3, 0) }
     private var wrapsText: Bool { isExpanded || dynamicTypeSize >= .xxLarge }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Keep the summary and two-item preview above the next overlapping card.
+            // Keep all collapsed content within the strip exposed by the next card.
             VStack(alignment: .leading, spacing: 7) {
                 HStack(alignment: .top, spacing: 12) {
                     Text(receipt.merchant).font(.system(.headline, weight: .semibold))
                         .lineLimit(wrapsText ? nil : 1)
                     Spacer(minLength: 0)
-                    Color.clear.frame(width: isExpanded ? 68 : 16, height: 16)
+                    Color.clear.frame(width: 16, height: 16)
                         .accessibilityHidden(true)
                 }
                 let layout =
@@ -303,7 +319,7 @@ private struct WalletReceiptPass: View {
                     : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 12))
                 layout {
                     Text(
-                        receipt.date?.formatted(.dateTime.month(.abbreviated).day().year())
+                        receipt.date.map(WalletDate.day)
                             ?? "Date needs review"
                     )
                     .font(.caption).foregroundStyle(Color.walletSecondary)
@@ -316,17 +332,18 @@ private struct WalletReceiptPass: View {
                         .layoutPriority(1)
                 }
             }
-            itemPreview.padding(.top, 12)
-            Spacer(minLength: 18)
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Label(
-                    (receipt.category ?? .other).title,
-                    systemImage: (receipt.category ?? .other).symbol)
-                Spacer(minLength: 0)
-                Text(isExpanded ? "View receipt" : "Tap to expand")
-                if isExpanded { Image(systemName: "chevron.right") }
+            if isExpanded {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Label(
+                        (receipt.category ?? .other).title,
+                        systemImage: (receipt.category ?? .other).symbol)
+                    Spacer(minLength: 0)
+                    Text("\(receipt.items.count) \(receipt.items.count == 1 ? "item" : "items")")
+                }
+                .font(.caption).foregroundStyle(Color.walletAccent)
+                .padding(.top, 16)
+                itemPreview.padding(.top, 12)
             }
-            .font(.caption).foregroundStyle(Color.walletAccent)
         }
         .padding(24).frame(height: height, alignment: .top)
         .frame(minHeight: minimumHeight, alignment: .top)
@@ -334,13 +351,21 @@ private struct WalletReceiptPass: View {
         .fixedSize(horizontal: false, vertical: true)
         .contentShape(ReceiptPaper(cornerRadius: 28, holeInset: 32), eoFill: true)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(
-            ([
-                receipt.merchant,
-                receipt.date?.formatted(date: .abbreviated, time: .omitted) ?? "Date needs review",
-                WalletMoney.string(receipt.total, currency: receipt.currency),
-            ] + previewItems.map(\.name) + (remainingItems > 0 ? ["\(remainingItems) more items"] : []))
-                .joined(separator: ", "))
+        .accessibilityLabel(accessibilitySummary)
+    }
+
+    private var accessibilitySummary: String {
+        var parts = [
+            receipt.merchant,
+            receipt.date.map(WalletDate.day) ?? "Date needs review",
+            WalletMoney.string(receipt.total, currency: receipt.currency),
+        ]
+        if isExpanded {
+            parts += [(receipt.category ?? .other).title, "\(receipt.items.count) items"]
+            parts += previewItems.map { $0.name.isEmpty ? "Needs review" : $0.name }
+            if remainingItems > 0 { parts.append("\(remainingItems) more items") }
+        }
+        return parts.joined(separator: ", ")
     }
 
     private var itemPreview: some View {
@@ -349,7 +374,7 @@ private struct WalletReceiptPass: View {
                 Text("No items added").font(.subheadline)
             } else {
                 ForEach(previewItems) { item in
-                    Text(item.name.isEmpty ? "Needs review" : item.name)
+                    Text("- \(item.name.isEmpty ? "Needs review" : item.name)")
                         .font(.subheadline)
                         .lineLimit(wrapsText ? nil : 1)
                         .frame(maxWidth: .infinity, alignment: .leading)

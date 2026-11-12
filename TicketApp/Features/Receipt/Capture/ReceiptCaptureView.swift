@@ -37,9 +37,6 @@ struct ReceiptCaptureView: View {
                         Button("Retry saving draft") { persistPhoto(pendingImageData, preview: preview) }
                             .buttonStyle(WalletPrimaryButton())
                     }
-                    if let draft, draft.status != .completed {
-                        Button("Open draft") { showingReview = true }.buttonStyle(WalletPrimaryButton())
-                    }
                     inputOptions.disabled(isImporting)
                 }.padding(26)
             }
@@ -125,9 +122,10 @@ struct ReceiptCaptureView: View {
             PhotosPicker(selection: $selection, matching: .images, photoLibrary: .shared()) {
                 Label("Photo library", systemImage: "photo.on.rectangle")
                     .font(.subheadline.weight(.medium)).frame(maxWidth: .infinity).padding(.vertical, 18)
+                    .contentShape(.rect(cornerRadius: 28))
                     .walletGlass(radius: 28)
             }.accessibilityIdentifier("importReceiptPhoto")
-            Button("Enter manually") {
+            Button {
                 do {
                     let draft = try store.createDraft()
                     receiptID = draft.id
@@ -135,7 +133,11 @@ struct ReceiptCaptureView: View {
                     pendingImageData = nil
                     showingReview = true
                 } catch { importError = error.localizedDescription }
-            }.font(.subheadline).padding(.top, 7).accessibilityIdentifier("manualReceipt")
+            } label: {
+                Text("Enter manually").font(.subheadline)
+                    .padding(.top, 7).frame(minHeight: 44)
+                    .contentShape(.rect)
+            }.accessibilityIdentifier("manualReceipt")
         }
     }
 

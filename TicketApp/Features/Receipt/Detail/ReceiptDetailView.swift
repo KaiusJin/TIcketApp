@@ -18,7 +18,7 @@ struct ReceiptDetailView: View {
                 VStack(spacing: 16) {
                     HStack {
                         Button(action: onClose) {
-                            Image(systemName: "chevron.up").frame(width: 44, height: 44)
+                            Image(systemName: "chevron.up").frame(width: 44, height: 44).contentShape(.circle)
                         }.buttonStyle(.plain).walletGlass(radius: 22, interactive: true)
                             .accessibilityLabel("Close")
                         Spacer()
@@ -72,25 +72,26 @@ struct ReceiptDetailView: View {
             } label: {
                 Image(systemName: current.isFavorite ? "bookmark.fill" : "bookmark").frame(
                     width: 44, height: 44)
+                    .contentShape(.rect)
             }.accessibilityLabel(current.isFavorite ? "Remove from favorites" : "Save to favorites")
             if current.imageFilename != nil {
                 Button {
                     showOriginal = true
                 } label: {
-                    Image(systemName: "doc.viewfinder").frame(width: 44, height: 44)
+                    Image(systemName: "doc.viewfinder").frame(width: 44, height: 44).contentShape(.rect)
                 }.accessibilityLabel("Original receipt")
                     .accessibilityIdentifier("originalReceipt")
             }
             Button {
                 openEditor()
             } label: {
-                Image(systemName: "pencil").frame(width: 44, height: 44)
+                Image(systemName: "pencil").frame(width: 44, height: 44).contentShape(.rect)
             }.accessibilityLabel("Edit").accessibilityIdentifier("editReceipt")
                 .disabled(current.status == .processing)
             Button(role: .destructive) {
                 confirmDelete = true
             } label: {
-                Image(systemName: "trash").foregroundStyle(.red).frame(width: 44, height: 44)
+                Image(systemName: "trash").foregroundStyle(.red).frame(width: 44, height: 44).contentShape(.rect)
             }.accessibilityLabel("Delete receipt").accessibilityIdentifier("deleteReceipt")
         }.font(.subheadline)
     }

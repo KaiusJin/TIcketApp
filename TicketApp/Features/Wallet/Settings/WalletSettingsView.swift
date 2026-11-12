@@ -2,7 +2,7 @@ import SwiftUI
 
 struct WalletSettingsView: View {
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("wallet.appearance") private var appearance = "system"
+    @Binding var appearance: String
     var body: some View {
         NavigationStack {
             Form {

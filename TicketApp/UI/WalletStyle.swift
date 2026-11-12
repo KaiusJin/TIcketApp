@@ -74,6 +74,7 @@ struct WalletPrimaryButton: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.font(.system(.body, design: .rounded, weight: .semibold))
             .frame(maxWidth: .infinity).padding(.vertical, 18)
+            .contentShape(.rect(cornerRadius: 28))
             .foregroundStyle(Color.walletInk).walletGlass(
                 tint: Color.walletHighlight.opacity(0.65), interactive: true
             )

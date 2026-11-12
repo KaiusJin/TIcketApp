@@ -81,17 +81,17 @@ struct WalletStatisticsView: View {
             Button {
                 moveMonth(-1)
             } label: {
-                Image(systemName: "chevron.left").frame(width: 24, height: 44)
+                Image(systemName: "chevron.left").frame(width: 24, height: 44).contentShape(.rect)
             }
             .accessibilityLabel("Previous month")
-            Text(month.formatted(.dateTime.month(.wide).year()))
+            Text(WalletDate.month(month))
                 .font(.subheadline.weight(.medium))
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
             Button {
                 moveMonth(1)
             } label: {
-                Image(systemName: "chevron.right").frame(width: 24, height: 44)
+                Image(systemName: "chevron.right").frame(width: 24, height: 44).contentShape(.rect)
             }
             .disabled(month >= ReceiptDate.monthStart(.now))
             .accessibilityLabel("Next month")
@@ -113,6 +113,7 @@ struct WalletStatisticsView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 10)
             .background(Color.walletHighlight.opacity(0.3), in: .capsule)
+            .contentShape(.capsule)
         }
         .accessibilityLabel("Currency")
     }
@@ -201,7 +202,9 @@ struct WalletStatisticsView: View {
                     .font(.title3.weight(.semibold))
                 Spacer()
                 Image(systemName: "chevron.right")
-            }.padding(20).walletGlass(tint: Color.walletHighlight.opacity(0.3))
+            }.padding(20)
+                .contentShape(.rect(cornerRadius: 28))
+                .walletGlass(tint: Color.walletHighlight.opacity(0.3))
         }.buttonStyle(.plain).accessibilityIdentifier("editBudget")
     }
 }

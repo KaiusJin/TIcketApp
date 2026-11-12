@@ -124,12 +124,9 @@ struct ReceiptEditorView: View {
                 : AnyLayout(HStackLayout())
             dateLayout {
                 Text("Purchase date").frame(maxWidth: .infinity, alignment: .leading)
-                DatePicker(
-                    "Purchase date",
-                    selection: Binding(get: { draft.date ?? .now }, set: { draft.date = $0 }),
-                    displayedComponents: .date
-                )
-                .labelsHidden()
+                WalletDateButton(
+                    title: "Purchase date",
+                    selection: Binding(get: { draft.date ?? .now }, set: { draft.date = $0 }))
             }
             .font(.subheadline)
             HStack {
@@ -163,6 +160,7 @@ struct ReceiptEditorView: View {
                         }
                         .padding(.horizontal, 8).padding(.vertical, 12)
                         .frame(maxWidth: .infinity).frame(minHeight: 84)
+                        .contentShape(.rect(cornerRadius: 18))
                         .foregroundStyle(draft.category == type ? Color.walletAccent : Color.walletSecondary)
                         .background(
                             draft.category == type
@@ -294,6 +292,7 @@ private struct ReceiptAmountEditor: View {
                 Image(systemName: "minus.circle")
                     .font(.system(size: 18))
                     .frame(width: 44, height: 44)
+                    .contentShape(.rect)
             }
             .accessibilityLabel("Remove \(name)")
         }

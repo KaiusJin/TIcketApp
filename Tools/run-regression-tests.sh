@@ -6,7 +6,7 @@ output_dir="$(mktemp -d "${TMPDIR:-/tmp}/ticketapp-regression.XXXXXX")"
 trap 'rm -rf "$output_dir"' EXIT
 
 # These sources use macOS-compatible Apple frameworks and no model runtime.
-sources=()
+sources=(TicketApp/UI/WalletDate.swift)
 while IFS= read -r source; do
     sources+=("$source")
 done < <(find TicketApp/Domain TicketApp/Pipeline TicketApp/Services TicketApp/Support \

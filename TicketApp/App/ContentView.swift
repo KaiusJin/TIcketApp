@@ -6,7 +6,16 @@ struct ContentView: View {
     @State private var tab: WalletNavigationBar.Tab = .wallet
     @State private var sheet: Sheet?
     @State private var currency = "CAD"
+    @State private var isSearching = false
     @AppStorage("wallet.appearance") private var appearance = "system"
+
+    private var preferredColorScheme: ColorScheme? {
+        switch appearance {
+        case "light": .light
+        case "dark": .dark
+        default: nil
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -15,24 +24,30 @@ struct ContentView: View {
                     WalletHomeView(
                         store: store, processor: processor,
                         openSettings: { sheet = .settings }, openDrafts: { sheet = .drafts },
-                        scan: { sheet = .scan })
+                        scan: { sheet = .scan }, showsSearch: $isSearching)
                 } else {
                     WalletStatisticsView(store: store, currency: $currency)
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                WalletNavigationBar(tab: $tab, scan: { sheet = .scan })
+                if tab != .wallet || !isSearching {
+                    WalletNavigationBar(tab: $tab, scan: { sheet = .scan })
+                }
             }
         }
-        .preferredColorScheme(appearance == "system" ? nil : appearance == "dark" ? .dark : .light)
+        .preferredColorScheme(preferredColorScheme)
         .tint(Color.walletAccent)
         .sheet(item: $sheet) { sheet in
-            switch sheet {
-            case .scan: ReceiptCaptureView(store: store, processor: processor)
-            case .drafts: WalletDraftsView(store: store, processor: processor)
-            case .settings: WalletSettingsView()
+            Group {
+                switch sheet {
+                case .scan: ReceiptCaptureView(store: store, processor: processor)
+                case .drafts: WalletDraftsView(store: store, processor: processor)
+                case .settings: WalletSettingsView(appearance: $appearance)
+                }
             }
+            // Sheets have their own presentation boundary; keep their preference in sync with the root.
+            .preferredColorScheme(preferredColorScheme)
         }
         .alert(
             "Couldn't update your wallet",
